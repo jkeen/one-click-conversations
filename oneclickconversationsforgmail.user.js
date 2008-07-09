@@ -34,15 +34,13 @@
 						  - Fixed bug (due to changed Google code) so clicking on the icon wouldn't pull up messages to and from yourself in the case of multiple replies.
 	   1.2.2 - 08.28.2007 - Added more event listeners to ensure that icons get reapplied after an event (deleting a message, for instance).
 	   2.0	 - 12.14.2007 - Rewrote script to add support for GMail V2, using Google's API. 
-	   2.1   - 7.4.2008   - Added better cleanup of old event listeners, reduced event listeners by 2/3 which should decrease memory use
+	   2.1   - 7.4.2008   - Added better cleanup of old event listeners, and reduced use of event listeners dramatically, which improves memory usage
 
 */
 const CLOCK_IMAGE = "data:image/gif;base64,R0lGODlhCgAKAKIAADMzM//M/7CwsGZmZv///8fHxwAAAAAAACH5BAEHAAEALAAAAAAKAAoAAAMpGDo8+kOUItwqJJPioh5ZNWAEmHHjdzKCRrRVAJAn8AASZT/BAACWQAIAOw==";
-
 const PERSON_IMAGE_OVER = "data:image/gif;base64,R0lGODlhCgAKALMAADMzM//M/9LS0mZmZrm5ue7u7v///+rq6t3d3QAAAAAAAAAAAAAAAAAAAAAA" +
 "AAAAACH5BAEHAAEALAAAAAAKAAoAAAQpMMhBh7xDGCMsPtvhTaAhXkF2HB2aEsQ4ITQyDkWNFB5e" +
 "/D8PYEgcBiIAOw==";
-
 const PERSON_IMAGE = "data:image/gif;base64,R0lGODlhCgAKAPcAAAAAAKzT/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
@@ -274,8 +272,6 @@ window.addEventListener('load', function() {
 			
 			messages= evalXPath(".//span[@class = '" + CONV_TO_SPAN_CLASS + "'][count(.//span[@class='oneclick'])=0]//span[@class = '" + CONV_IMG_SPAN_CLASS + "']", page);
 			for (i=0;i<messages.length;i++) {	
-			  
-			  ////img[@id = '" + CONV_IMG_ID + "']
 			  searchterm=messages[i].childNodes[0].getAttribute('jid');
 			  if (searchterm) {
 			    var text = messages[i].parentNode.textContent;

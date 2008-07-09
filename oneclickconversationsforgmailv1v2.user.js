@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name          One Click Conversations for GMail V.1 & V.2
+// @name          One Click Conversations for GMail
 // @namespace      http://www.jeffreykeen.com/projects/oneclickconversations
 // @description   Access recent conversations in one painless click.
 // @include        http://mail.gmail.com/*
@@ -19,25 +19,7 @@
 
 	 + Adds icon just to the left of sender name in list view and in message view
 	    + Clicking on icon takes you to the recent conversations with that user	
-		+ Option-clicking the icon searches for all messages from the sender's domain.  This is useful for the pile of old 
-		  mailing lists/notifications that come from [random]@domain.com 
-
-
-###  Features, as of latest release (For Gmail V1 users): --------------------------------------------
-   
-     + Adds icon just to the left of sender name in list view and in message view
-         + Clicking on icon takes you to the recent conversations with that user
-         + Rolling over icon pops up menu, as found via the "quick contacts" panel 
-     + Adds "Recent Conversations" item to pull down menu in the message view.
-
-   Requirements:
-     + GMail view must be set to "standard with chat".
-
-   Testing:
-     + Works with Firefox 2.0+ with Greasemonkey and Opera 9+, for Mac and PC. 
-     + Definitely doesn't work with Cream Monkey for Safari.
-
-
+		+ Option-clicking the icon searches for all messages from the sender's domain.
 
 ### Version History:
        1.0   - 12.29.2006 - Initial Release
@@ -52,12 +34,10 @@
 						  - Fixed bug (due to changed Google code) so clicking on the icon wouldn't pull up messages to and from yourself in the case of multiple replies.
 	   1.2.2 - 08.28.2007 - Added more event listeners to ensure that icons get reapplied after an event (deleting a message, for instance).
 	   2.0	 - 12.14.2007 - Rewrote script to add support for GMail V2, using Google's API. 
+	   2.1   - 7.4.2008   - Added better cleanup of old event listeners, reduced event listeners by 2/3 which should decrease memory use
 
 */
-
-
-const CLOCK_IMAGE = "data:image/gif;base64,R0lGODlhCgAKAKIAADMzM//M/7CwsGZmZv///8fHxwAAAAAAACH5BAEHAAEALAAAAAAKAAoAAAMp" +
-"GDo8+kOUItwqJJPioh5ZNWAEmHHjdzKCRrRVAJAn8AASZT/BAACWQAIAOw==";
+const CLOCK_IMAGE = "data:image/gif;base64,R0lGODlhCgAKAKIAADMzM//M/7CwsGZmZv///8fHxwAAAAAAACH5BAEHAAEALAAAAAAKAAoAAAMpGDo8+kOUItwqJJPioh5ZNWAEmHHjdzKCRrRVAJAn8AASZT/BAACWQAIAOw==";
 
 const PERSON_IMAGE_OVER = "data:image/gif;base64,R0lGODlhCgAKALMAADMzM//M/9LS0mZmZrm5ue7u7v///+rq6t3d3QAAAAAAAAAAAAAAAAAAAAAA" +
 "AAAAACH5BAEHAAEALAAAAAAKAAoAAAQpMMhBh7xDGCMsPtvhTaAhXkF2HB2aEsQ4ITQyDkWNFB5e" +
@@ -85,13 +65,33 @@ const LIST_EMAIL_SPAN_CLASS='k62PNc';
 const LIST_EMAIL_SPAN_BOLD_CLASS='qNUdo';
 const LIST_EMAIL_SPAN_TD_CLASS='f66Vyf';
 const CONV_FROM_SPAN_CLASS='HcCDpe';
-const CONV_ADDRESS_SPAN_CLASS='EP8xU';
+const CONV_IMG_SPAN_CLASS='JDpiNd';
 const CONV_TO_SPAN_CLASS='HcCDpe';
+const CONV_ADDRESS_TABLE= 'BwDhwd';
+const CONV_IMG_ID = 'upi';
+
+var css = "span.oneclick{background: transparent url(" + PERSON_IMAGE + ")  left no-repeat; display:inline-block; text-align:right; padding-right:5px; width:10px; height:10px;} span.oneclick:hover{background: transparent url(" + PERSON_IMAGE_OVER + ")  left no-repeat;}";
+if (typeof GM_addStyle != "undefined") {
+	GM_addStyle(css);
+} else if (typeof addStyle != "undefined") {
+	addStyle(css);
+} else {
+	var heads = document.getElementsByTagName("head");
+	if (heads.length > 0) {
+		var node = document.createElement("style");
+		node.type = "text/css";
+		node.appendChild(document.createTextNode(css));
+		heads[0].appendChild(node); 
+	}
+}
+
+var iconListeners=[];
+var currentPage;
 
 window.addEventListener('load', function() {
   if (unsafeWindow.gmonkey) {
     unsafeWindow.gmonkey.load('1.0', function(gmail) {	
-		
+    
 		function evalXPath(expression, rootNode) {
 		  try {
 			var xpathIterator = rootNode.ownerDocument.evaluate(
@@ -108,18 +108,16 @@ window.addEventListener('load', function() {
 		  var results = [];
 		
 		  // Convert result to JS array
-		  for (var xpathNode = xpathIterator.iterateNext(); 
-			   xpathNode; 
-			   xpathNode = xpathIterator.iterateNext()) {
-			results.push(xpathNode);
+		  for (var xpathNode = xpathIterator.iterateNext(); xpathNode; xpathNode = xpathIterator.iterateNext()) {
+  			results.push(xpathNode);
 		  }
 			
 		  return results;
 		}
 		
-		function addOneClick() {
+		function addIcons() {
 			/* Calls appropriate functions for adding One Click icon, based on active view */
-			$view=gmail.getActiveViewType();
+			var $view=gmail.getActiveViewType();
 			if ($view == 'cv') { //conversation view
 				listen(false);
 				modConversationView();
@@ -130,15 +128,24 @@ window.addEventListener('load', function() {
 				modListView();
 				listen(true);
 			}
+			toggleListeners(gmail.getActiveViewElement());
 		}
+	
+	  function toggleListeners(page) {
+	    var view_id = page.getAttribute('view_id');
+	    if (currentPage) turnOffListeners(iconListeners[view_id]);
+			currentPage = gmail.getActiveViewElement();
+			turnOnListeners(iconListeners[view_id]);
+			removeOrphans();
+	  }
 	
 		function listen(bool) {
 			var root=gmail.getActiveViewElement();
 			if (bool==true) {		
-				root.addEventListener("DOMNodeInserted", addOneClick, false); 		
+				root.addEventListener("DOMNodeInserted", addIcons, false); 		
 			}
 			if (bool==false) {
-				root.removeEventListener("DOMNodeInserted", addOneClick, false); 
+				root.removeEventListener("DOMNodeInserted", addIcons, false); 
 			}
 		}
 	
@@ -155,13 +162,13 @@ window.addEventListener('load', function() {
 			
 		function jumpToConversation (e) {
 			if (!e) var e = window.event;
-			var searchterm=this.getAttribute("searchterm");
-			
+			var searchterm=this.getAttribute('searchterm');			
+
 			if (e.altKey) {
 				/* if alt/option key is down, search based on domain. */
 				var terms=searchterm.split('@');
 				if (terms.length>1) {
-					var searchterm="*@" + terms[1];
+					searchterm="*@" + terms[1];
 				}
 			}
 			top.location.hash="#search/" + encodeURIComponent("from:" + searchterm + " OR to:" + searchterm);
@@ -172,377 +179,117 @@ window.addEventListener('load', function() {
 			if (e.stopPropagation) e.stopPropagation();
 			return false;
 		}		
-		
-		function iconMouseOver (e) {
-			this.src=PERSON_IMAGE_OVER;
-		}
-		
-		function iconMouseOut (e) {
-			this.src=PERSON_IMAGE;
-		}
 			
 		function createClickSpan(searchterm) {
-				var TextSpan = document.createElement("span");
-				TextSpan.setAttribute("class", "oneclickts");
-				TextSpan.style.display='inline';
-				TextSpan.style.textAlign='right';
-				TextSpan.style.paddingRight='5px';
-			
-				var Image = document.createElement("img");
-				
-				Image.width='10';
-				Image.height='10';
-				Image.src=PERSON_IMAGE;
-				Image.title="View Recent Conversations";
-				Image.setAttribute('class', 'oneclick');
-				Image.setAttribute('searchterm', searchterm);
-
-				Image.addEventListener('mousedown', jumpToConversation, false);
-				Image.addEventListener('mouseover', iconMouseOver, false);
-				Image.addEventListener('mouseout', iconMouseOut, false);
-				TextSpan.appendChild(Image);
-				
-				return TextSpan;
+      var clickSpan = document.createElement("span");
+    
+      clickSpan.setAttribute("class", "oneclick");  
+      clickSpan.setAttribute("title", "View Recent Conversations");
+      clickSpan.setAttribute('searchterm', searchterm); 
+      clickSpan.setAttribute('id', "occ_" + parseInt(Math.random() * 10000000, 10));
+      clickSpan.textContent = " ";
+      return clickSpan;
 		}
+		
+		function trackIcon(page, element) {
+		  var listeners = [];
+		  if (key = page.getAttribute('view_id')) {
+        listeners = iconListeners[key];
+		  }
+		  else {
+		    key = "vid_" + parseInt(Math.random() * 10000000, 10);
+		    page.setAttribute('view_id', key);
+		  }
+		  listeners.push(element);
+		  iconListeners[key] = listeners;
+		}
+		
+		function removeIconListener(element) {
+		  element.removeEventListener('mousedown', jumpToConversation, false);
+		}
+		
+		function turnOffListeners(array) {
+		  for (var i=0; i < array.length; i++) {
+		    array[i].removeEventListener('mousedown', jumpToConversation, false);
+		  }
+		}
+		
+		function turnOnListeners(array) {
+		  for (var i=0; i < array.length; i++) {
+		    array[i].addEventListener('mousedown', jumpToConversation, false);
+		  }
+		}
+		
+		function removeOrphans() {
+		  for (var id in iconListeners) {
+		     if ((document.getElementById('canvas_frame')) && (!document.getElementById('canvas_frame').contentDocument.getElementById(id))) {
+		       turnOffListeners(iconListeners[page]);
+		       delete iconListeners[page];
+		     }
+		  }
+		}
+		
+	  function isModified(message) {
+			return (message.innerHTML.match(/class=\"oneclick\"/));
+	  }
 	
 		function modListView() {
-			var listroot=gmail.getActiveViewElement();
 			var myEmailAddress=getMyEmailAddress();
-			
-			/* find all message objects, that haven't already been modified */
-			var messages = evalXPath("//tr[count(.//img[@class='oneclick'])=0][contains(@class, '" + LIST_TR_CLASS + "')]", listroot); 
-
+			var page = gmail.getActiveViewElement();
+      /* find all message objects, that haven't already been modified */
+			var messages = evalXPath("//tr[count(.//span[@class='oneclick'])=0][contains(@class, '" + LIST_TR_CLASS + "')]", page);
 			for (i=0; i<messages.length; i++) {	
-
 				/* Check if we have already modified this message.  This is a paranoia check.  Recursion on this thing gets ugly. */
-				var inner=messages[i].innerHTML;
-				if (!(inner.match(/\<img class=\"oneclick\".+\>/))) {	
+				if (!isModified(messages[i])) {	
 					/* find the first email that isn't ours, corresponding to this message */
-					var email_address= evalXPath(".//span[@class='" + LIST_EMAIL_SPAN_CLASS + "' or " +	"@class='" + LIST_EMAIL_SPAN_BOLD_CLASS + "'][@email!='" + myEmailAddress + "'][1]/@email", messages[i]);
+					var email_address = evalXPath(".//span[@class='" + LIST_EMAIL_SPAN_CLASS + "' or " +	"@class='" + LIST_EMAIL_SPAN_BOLD_CLASS + "'][@email!='" + myEmailAddress + "'][1]/@email", messages[i]);
 
 					var searchterm="";
-					try {
-						searchterm=email_address[0].nodeValue;	
-					} catch (e) {}
+					try { searchterm=email_address[0].nodeValue; } catch (e) { }
 					
-					if (searchterm == "undefined") {
-							//an error occurred, or it was an email to ourselves
-							searchterm=myEmailAddress;
-					}
-					else if (searchterm=="") {
-							searchterm=myEmailAddress;
-					}
+					if (searchterm == "undefined") 	searchterm=myEmailAddress; //an error occurred, or it was an email to ourselves
+					else if (searchterm=="") 	searchterm=myEmailAddress;
 					
 					/* Insert the span right before the sender name */		
-					messages[i].childNodes[2].firstChild.insertBefore(createClickSpan(searchterm),messages[i].childNodes[2].firstChild.firstChild);			
+					var icon = createClickSpan(searchterm);
+					messages[i].childNodes[2].firstChild.insertBefore( icon,  messages[i].childNodes[2].firstChild.firstChild );
+					trackIcon(page, icon);
 				}
 			}
 		}
 
 		function modConversationView() {
-			var messageroot=gmail.getActiveViewElement();
-			var messages= evalXPath(".//span[@class='" + CONV_ADDRESS_SPAN_CLASS + "']", messageroot);
-			for (i=0;i<messages.length;i++) {			
-				var searchterm=messages[i].getAttribute('email'); // get email from element
-				var messageAlreadyModified = false;
-				
-				var icons = evalXPath(".//img[@class='oneclick']", messages[i]);
-								
-				/* Check if we have already modified this message.  If so, skip to next */
-				if (icons.length == 0) {
-					messages[i].insertBefore(createClickSpan(searchterm),messages[i].childNodes[0]);
+		  var page = gmail.getActiveViewElement();
+			var messages= evalXPath(".//span[@email]", page);
+			for (i=0;i<messages.length;i++) {	
+				var searchterm=messages[i].getAttribute('email'); // get email from element				
+				if (!isModified(messages[i])) {
+				  var icon = createClickSpan(searchterm);
+				  icon.setAttribute('style', 'padding-right:3px');
+					messages[i].insertBefore(icon,messages[i].childNodes[0]);
+					trackIcon(page, icon);
 				}
 			}
+			
+			
+			messages= evalXPath(".//span[@class = '" + CONV_TO_SPAN_CLASS + "'][count(.//span[@class='oneclick'])=0]//span[@class = '" + CONV_IMG_SPAN_CLASS + "']", page);
+			for (i=0;i<messages.length;i++) {	
+			  
+			  ////img[@id = '" + CONV_IMG_ID + "']
+			  searchterm=messages[i].childNodes[0].getAttribute('jid');
+			  if (searchterm) {
+			    var text = messages[i].parentNode.textContent;
+          var icon = createClickSpan(searchterm);
+          icon.setAttribute('style', 'padding-right:3px');
+          messages[i].parentNode.insertBefore(icon, messages[i].nextSibling);
+          trackIcon(page, icon);
+			  }
+		  }
 		} 
 	
-  	  gmail.registerViewChangeCallback(addOneClick);
+  	gmail.registerViewChangeCallback(addIcons);
 	  listen(true);
-	  addOneClick();
+	  addIcons();
     });
   }
-else {
-	/* 	- Code For The Old Gmail 
-		- This, like all things, will die someday.  But as of 12/1/07, the old version of Gmail is still widely in use.
-		- So for now, it should stay.
-	*/
-	
-	function evaluateXPath(aNode, aExpr) {
-	  var results = document.evaluate(aExpr, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null );
-	  
-	  var found = [];
-	  var res;
-	  var i=0;
-	  while (res = results.iterateNext() ){
-		found.push(res);
-	  }
-		
-	  return found;
-	}
-	
-	function chatEnabled() {
-		var chat=document.getElementById("nvq");
-		if (chat) { 
-			return true; 
-		}
-		else { 
-			return false; 
-		}
-	}
-	
-	function listenToList(bool) {
-		/* adds/removes event listener to the list view */
-		var list=document.getElementById("co");
-		if (list) { 
-			if (bool==true) {
-				list.addEventListener("DOMNodeInserted", modListView, false); 
-				list.addEventListener("DOMAttrModified", modListView, false); 
-				list.addEventListener("DOMSubtreeModified", modListView, false); 
-			}
-			if (bool==false) {
-				list.removeEventListener("DOMNodeInserted", modListView, false); 
-				list.removeEventListener("DOMAttrModified", modListView, false); 
-				list.removeEventListener("DOMSubtreeModified", modListView, false); 
-			}
-		}
-	}
-	
-	function listenToMessages(bool) {
-		/* adds/removes event listener to the message view */
-		var msgs=document.getElementById("msgs");
-		if (msgs) { 
-			if (bool==true) {		
-				msgs.addEventListener("DOMNodeInserted", modMessageView, false); 
-				//msgs.addEventListener("DOMAttrModified", modMessageView, false); 
-				msgs.addEventListener("DOMSubtreeModified", modMessageView, false);			
-			}
-			if (bool==false) {
-				msgs.removeEventListener("DOMNodeInserted", modMessageView, false); 
-				//msgs.removeEventListener("DOMAttrModified", modMessageView, false); 
-				msgs.removeEventListener("DOMSubtreeModified", modMessageView, false);
-			}
-		}
-	}
-	
-	function IsMessageView() {
-		var query="//div[@id='fic']";
-		var result=evaluateXPath(document,query);
-	
-		return (result.length > 0 ? true : false);
-	}
-	
-	function IsListView() {
-		var query="//div[@id='tbd']";
-		var result=evaluateXPath(document,query);
-	
-		return (result.length > 0 ? true : false);
-	}
-	
-	function OKToModList() {
-		if (IsListView() == true) {
-			/* make sure we're haven't already made our mod */
-			var query="//div[@id='tbd']//img[contains(@id,'_pro')]";
-			var icons=evaluateXPath(document, query);
-			return (icons.length > 0 ? false : true);
-		}
-		else {
-			return false;
-		}
-	}
-	
-	function modListView() {
-		if (OKToModList() == true) {
-			/* Remove event listener to prevent unnecessary recursion */
-			listenToList(false);
-			
-					
-			/* get our address, so we don't create quick link to ourself in the case of conversations */
-			var myAddressNode=evaluateXPath(document, "//div[@id='guser']//b");
-			
-			if (myAddressNode.length > 0 ) {
-				var myAddress=myAddressNode[0].innerHTML;
-			}
-			
-			/* find all message objects */
-			var msgs = evaluateXPath(document, "//tr[contains(@id, 'w_')]"); 
-			for (i=0;i<msgs.length;i++) {
-				var message=msgs[i];
-			
-				/* Check if we have already modified this message.  If so, skip to next */
-				var exists = evaluateXPath(document, "//tr[@id ='" + message.id + "']//span[contains(@id, 'pastc_')]");
-				if (exists.length > 0) { continue;}
-				
-				/* find email addresses corresponding to this message */
-				var query="//tr[contains(@id, '" + message.id + "')]//span[contains(@id, '_upro')]";
-				var email= evaluateXPath(document, query);
-	
-				/* get the first address that isn't ours */
-				var searchterm="";
-				for (j=0; j< email.length; j++) {
-					searchterm=email[j].id.substring(6,email[j].id.length);
-					if (searchterm != myAddress) {
-						break;
-					}
-				}
-	
-				if (searchterm == "") {
-					/* 
-					   This was put in because Google changed their code in May 2007 and removed the vital 
-					   <span id="_upro_username@gmail.com">Sender Name</span> that let this script
-					   know the email address of the message.  Now that it's gone this script searches by name when in list view, 
-					   instead of by email address, as it used to.  Also, since the email address isn't available, the pop-up 
-					   functionality on the front page won't work either unless the sender's name is an email address.
-					   
-					   Message view was unaffected by the Google code change, and I've left the code in place so original functionality
-					   will be restored to message view if Google listens to my pleas and puts back in that tiny piece of code.
-					*/
-				
-					var searchterms=msgs[i].childNodes[2].firstChild.textContent;
-	
-					/* cut out the message count if it's present.  i.e. Jeff (3) will yield just 'Jeff' */
-					searchterms=searchterms.replace(/\(\d+\)/g,'');
-	
-					/* search for the first name that isn't 'me' */
-					var search_array=searchterms.split(",");
-					for (k=0; k< search_array.length; k++) {
-						searchterm=search_array[k];
-						if (searchterm != "me") {
-							break;
-						}
-					}							
-				}
-	
-				var TextSpan = document.createElement("span");
-				/* Gmail will add click to search functionality to id's beginning with "pastc_" */
-				TextSpan.id="pastc_" + searchterm;
-				TextSpan.style.display='inline';
-				TextSpan.style.textAlign='right';
-				TextSpan.style.paddingRight='5px';
-	
-				var reg = new RegExp("@");
-				var Image = document.createElement("img");
-				if (reg.exec(searchterm)) {
-					/* Gmail will add a rollover popup to id's beginning with "_pro_" */
-					Image.id="_pro_" + searchterm;
-				}
-				else {
-					/* This id should begin with _pro so OkToModList() still functions, but shouldn't 
-					   be _pro_ so an invalid popup doesn't show up.
-					*/
-					Image.title="View Recent Conversations";
-					Image.id= "_prox_" + searchterm;;
-				}
-	
-				Image.width='10';
-				Image.height='10';
-				Image.src=PERSON_IMAGE;
-				Image.setAttribute('onmouseover', "javascript: this.setAttribute('src', '" +  PERSON_IMAGE_OVER + "')");
-				Image.setAttribute('onmouseout', "javascript: this.setAttribute('src', '" +  PERSON_IMAGE + "')");
-	
-				TextSpan.appendChild(Image);
-	
-				/* Insert the span right before the sender name */
-				msgs[i].childNodes[2].insertBefore(TextSpan,msgs[i].childNodes[2].firstChild);
-			}
-			
-			/* Listen for changes, again */
-			
-			listenToList(true);
-		}
-	}
-	
-	
-	function modMessageView() {
-		if (IsMessageView() == true) {
-			/* Remove event listener to prevent unnecessary recursion */
-			listenToMessages(false);
-			
-			var menus = evaluateXPath(document, "//div[@class='om']"); // find all menu objects
-			var results= evaluateXPath(document, "//td//span[contains(@id, '_user_')]"); // find all address objects
-	
-			for (i=0;i<results.length;i++) {
-				
-				/* Check if we have already modified this message.  If so, skip to next */
-				var address=results[i].id.substring(6,results[i].id.length); // get email from _user_blah@email.com
-				var messageAlreadyModified = false;
-				for (j=0;j<results[i].childNodes.length;j++) {
-					if (results[i].childNodes[j].id == "pastc_" + address) {
-						messageAlreadyModified= true;
-					}
-				}
-			
-				if (messageAlreadyModified==true) { continue; }
-				
-				/* add recent conversations item to menu, if menu exists */
-				if (menus) {
-					if (i < menus.length) {
-						var len = menus[i].id.length;
-						var menuNum=menus[i].id.substring(len-1,len); // get the actual menu number. i.e. the 3 from "om_3"
-						var index=menuNum-1;
-						if ((index <= results.length) && (index > -1)) { 
-							var email=results[index].id.substring(6,results[index].id.length); // get email from _user_blah@email.com
-			
-							var Span = document.createElement("span");
-							var TextSpan = document.createElement("span");
-							Span.className='oi cbut h';
-							Span.id="omi_" + menuNum;
-			
-							TextSpan.id="pastc_" + email;
-							TextSpan.style.display='block';
-							TextSpan.innerHTML="<img width='10' height='10' style='padding-right:3px; padding-left:2px; padding-top:5px; padding-bottom:0px;' src='" + CLOCK_IMAGE + "' />&nbsp;Recent conversations";
-			
-							Span.appendChild(TextSpan);
-							menus[i].appendChild(Span);
-						}
-					}
-				}
-				
-				var TextSpan = document.createElement("span");
-				TextSpan.id="pastc_" + address;
-				TextSpan.style.display='inline';
-				TextSpan.style.textAlign='right';
-				TextSpan.style.paddingRight='5px';
-			
-				var Image = document.createElement("img");
-				Image.id="_pro_" + address;
-				Image.width='10';
-				Image.height='10';
-				Image.src=PERSON_IMAGE;
-				Image.setAttribute('onmouseover', "javascript: this.setAttribute('src', '" +  PERSON_IMAGE_OVER + "')");
-				Image.setAttribute('onmouseout', "javascript: this.setAttribute('src', '" +  PERSON_IMAGE + "')");
-		
-				TextSpan.appendChild(Image);
-	
-				/* we need to insert our image in a slightly different place if the message details are showing */
-				if (results[i].parentNode.className == "au") {
-					results[i].insertBefore(TextSpan,results[i].childNodes[1]);
-				}
-				else {
-					results[i].insertBefore(TextSpan,results[i].childNodes[0]);
-				}
-			}
-			
-			/* Listen for changes, again */
-			listenToMessages(true);
-		}
-	}
-	
-	if (chatEnabled()==true) {
-		modListView();
-		modMessageView();
-	}
-	
-	
-	else if ((IsListView() == true) || (IsMessageView() == true)) { 
-		// Must be in ListView or MessageView so we don't pop up a message while Gmail is loading.
-		
-		// Alert user that chat is not enabled
-		var icon="<img src='" + PERSON_IMAGE + "' width='10' height='10' style='padding-right:5px; position:relative; top:0px;'/>";
-	
-		var messageText="<b>One Click Conversations</b> needs to enable Gmail chat in order to function.";
-		var msghtml='<table width="100%" cellspacing="0" cellpadding="4" border="0" style="background-color:rgb(255,255,230); border-bottom:1px solid gray; font-size:11px; font-family:Arial; height:25px; padding-left:5px; margin-bottom:5px;"><tbody><tr><td>' + icon + unescape (messageText) + '<b><a href="javascript:// Don&apos;t worry, you don&apos;t have to talk to anyone." title="Don&apos;t worry, you don&apos;t have to talk to anyone." onclick="top.js._Main_DisableChat(false)" style="color: rgb(0, 0, 204); margin-left:10px;">Enable Gmail Chat</a></b></td></tr></tbody></table>';
-	
-		var body = document.getElementsByTagName("body")[0];
-		body.innerHTML=msghtml + body.innerHTML;
-	}
-
-}}, true);
+}, true);

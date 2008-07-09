@@ -10,10 +10,6 @@
 
 /* 
 ### Author: Jeff Keen - http://www.jeffreykeen.com
-
-	This is a hybrid release, meant to function during the transition from Gmail V1 -> Gmail V2.  As of 12/14/07, there 
-	are still lots of users not using V2, and as far as I know, Google Apps for your Domain hasn't been updated yet to
-	support the new Gmail V2 features.
 	
 ###	Features, as of latest release (For Gmail V2 users): ----------------------------------------------
 

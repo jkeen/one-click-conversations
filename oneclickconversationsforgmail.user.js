@@ -253,18 +253,18 @@ window.addEventListener('load', function() {
 		}
 
 		function modConversationView() {
+		  var myEmail = getMyEmailAddress();
 		  var page = gmail.getActiveViewElement();
 			var messages= evalXPath(".//span[@email]", page);
 			for (i=0;i<messages.length;i++) {	
 				var searchterm=messages[i].getAttribute('email'); // get email from element				
-				if (!isModified(messages[i])) {
+				if (!isModified(messages[i]) && searchterm!=myEmail) {
 				  var icon = createClickSpan(searchterm);
 				  icon.setAttribute('style', 'padding-right:3px');
 					messages[i].insertBefore(icon,messages[i].childNodes[0]);
 					trackIcon(page, icon);
 				}
 			}
-			
 			
 			messages= evalXPath(".//span[@class = '" + CONV_TO_SPAN_CLASS + "'][count(.//span[@class='oneclick'])=0]//span[@class = '" + CONV_IMG_SPAN_CLASS + "']", page);
 			for (i=0;i<messages.length;i++) {	
@@ -277,7 +277,7 @@ window.addEventListener('load', function() {
           trackIcon(page, icon);
 			  }
 		  }
-		} 
+		}
 	
   	gmail.registerViewChangeCallback(addIcons);
 	  listen(true);

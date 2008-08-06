@@ -188,7 +188,7 @@ window.addEventListener('load', function() {
 					searchterm="*@" + terms[1];
 				}
 			}
-			top.location.hash="#search/" + encodeURIComponent("from:" + searchterm + " OR to:" + searchterm);
+			top.location.hash="#search/" + "from%3A" + encodeURIComponent(searchterm) + "+OR+to%3A" + encodeURIComponent(searchterm);
 			
 			/* Cancel the other events after this one.  This prevents gmail from loading a message from our click event. */
 			e.preventDefault();

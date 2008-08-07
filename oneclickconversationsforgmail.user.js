@@ -31,7 +31,7 @@
   			              - Fixed bug (due to changed Google code) so clicking on the icon wouldn't pull up messages to and from yourself in the case of multiple replies.
    1.2.2 - 08.28.2007 - Added more event listeners to ensure that icons get reapplied after an event (deleting a message, for instance).
    2.0	 - 12.14.2007 - Rewrote script to add support for GMail V2, using Google's API. 
-   2.1   - 7.4.2008   - Added better cleanup of old event listeners, and reduced use of event listeners dramatically, which improves memory usage.  Added more icons in more places.
+   2.1   - 7.4.2008   - Added better cleanup of old event listeners, and reduced use of event listeners dramatically, which improves memory usage
 */
 const CLOCK_IMAGE = "data:image/gif;base64,R0lGODlhCgAKAKIAADMzM//M/7CwsGZmZv///8fHxwAAAAAAACH5BAEHAAEALAAAAAAKAAoAAAMpGDo8+kOUItwqJJPioh5ZNWAEmHHjdzKCRrRVAJAn8AASZT/BAACWQAIAOw==";
 const PERSON_IMAGE_OVER = "data:image/gif;base64,R0lGODlhCgAKALMAADMzM//M/9LS0mZmZrm5ue7u7v///+rq6t3d3QAAAAAAAAAAAAAAAAAAAAAA" +
@@ -64,7 +64,7 @@ const CONV_TO_SPAN_CLASS='HcCDpe';
 const CONV_ADDRESS_TABLE= 'BwDhwd';
 const CONV_IMG_ID = 'upi';
 
-const DEBUG = true;
+/* Add Styles */
 var css = "span.oneclick{background: transparent url(" + PERSON_IMAGE + ")  left no-repeat; display:inline-block; text-align:right; padding-right:5px; width:10px; height:10px;} span.oneclick:hover{background: transparent url(" + PERSON_IMAGE_OVER + ")  left no-repeat;}";
 if (typeof GM_addStyle != "undefined") {
 	GM_addStyle(css);
@@ -80,11 +80,14 @@ if (typeof GM_addStyle != "undefined") {
 	}
 }
 
-window.OneClickConversations = { 
-    iconListeners: [],
-    currentPage: null,
-    gmail:null,
-		evalXPath: function(expression, rootNode) {
+var iconListeners=[];
+var currentPage;
+
+window.addEventListener('load', function() {
+  if (unsafeWindow.gmonkey) {
+    unsafeWindow.gmonkey.load('1.0', function(gmail) {	
+    
+		function evalXPath(expression, rootNode) {
 		  try {
 			var xpathIterator = rootNode.ownerDocument.evaluate(
 			  expression,
@@ -104,79 +107,77 @@ window.OneClickConversations = {
 		  }
 			
 		  return results;
-		},
+		}
 	
-		listen: function(bool) { 
-		  if (DEBUG) { GM_log("<listen bool = " + bool + ">"); }
-			var root=this.gmail.getActiveViewElement();
-			if (bool)	root.addEventListener("DOMNodeInserted", this.addIcons, false); 		
-			else root.removeEventListener("DOMNodeInserted", this.addIcons, false);
-  		if (DEBUG) { GM_log("</listen>"); } 
-		},
+		function listen(bool) {
+			var root=gmail.getActiveViewElement();
+			if (bool)	root.addEventListener("DOMNodeInserted", addIcons, false); 		
+			else root.removeEventListener("DOMNodeInserted", addIcons, false); 
+		}
 	
-	  toggleListeners: function(page) {
+	  function toggleListeners(page) {
 	    var view_id = page.getAttribute('view_id');
-	    if (this.currentPage) this.turnOffListeners(this.iconListeners[view_id]);
-			currentPage = this.gmail.getActiveViewElement();
-			this.turnOnListeners(this.iconListeners[view_id]);
-			this.removeOrphans();
-	  },
+	    if (currentPage) turnOffListeners(iconListeners[view_id]);
+			currentPage = gmail.getActiveViewElement();
+			turnOnListeners(iconListeners[view_id]);
+			removeOrphans();
+	  }
 		
-		turnOffListeners: function(array) {
+		function turnOffListeners(array) {
 		  for (var i=0; i < array.length; i++) {
-		    array[i].removeEventListener('mousedown', this.jumpToConversation, false);
+		    array[i].removeEventListener('mousedown', jumpToConversation, false);
 		  }
-		},
+		}
 		
-		turnOnListeners: function(array) {
+		function turnOnListeners(array) {
 		  for (var i=0; i < array.length; i++) {
-		    array[i].addEventListener('mousedown', this.jumpToConversation, false);
+		    array[i].addEventListener('mousedown', jumpToConversation, false);
 		  }
-		},
+		}
 		
-		removeIconListener: function(element) {
-		  element.removeEventListener('mousedown', this.jumpToConversation, false);
-		},
+		function removeIconListener(element) {
+		  element.removeEventListener('mousedown', jumpToConversation, false);
+		}
 				
-		removeOrphans: function() {
-		  for (var id in this.iconListeners) {
+		function removeOrphans() {
+		  for (var id in iconListeners) {
 		     if ((document.getElementById('canvas_frame')) && (!document.getElementById('canvas_frame').contentDocument.getElementById(id))) {
-		       this.turnOffListeners(this.iconListeners[page]);
-		       delete this.iconListeners[page];
+		       turnOffListeners(iconListeners[page]);
+		       delete iconListeners[page];
 		     }
 		  }
-		},
+		}
 		
-		trackIcon: function(page, element) {
+		function trackIcon(page, element) {
 		  /* keep track of icons per page, so we can add/remove listeners effectively */
 		  var listeners = [];
 		  if (key = page.getAttribute('view_id')) {
-        listeners = this.iconListeners[key];
+        listeners = iconListeners[key];
 		  }
 		  else {
 		    key = "vid_" + parseInt(Math.random() * 10000000, 10);
 		    page.setAttribute('view_id', key);
 		  }
 		  listeners.push(element);
-		  this.iconListeners[key] = listeners;
-		},
+		  iconListeners[key] = listeners;
+		}
 		
-	  isModified: function(message) {
+	  function isModified(message) {
 			return (message.innerHTML.match(/class=\"oneclick\"/));
-	  },
+	  }
 			
-		getMyEmailAddress: function() {
+		function getMyEmailAddress() {
 			/* get our address, so we don't create link to ourself in the case of conversations */
 			try {
-				var masthead=this.gmail.getMastheadElement();		
-				var results=this.evalXPath(".//div[@class='" + MASTHEAD_EMAIL_DIV_CLASS + "']//b",masthead);
+				var masthead=gmail.getMastheadElement();		
+				var results=evalXPath(".//div[@class='" + MASTHEAD_EMAIL_DIV_CLASS + "']//b",masthead);
 				var myAddress=results[0].innerHTML;
 			} 
 			catch (e) {}
 			return myAddress;
-		},
+		}
 			
-		jumpToConversation : function(e) {
+		function jumpToConversation (e) {
 			if (!e) var e = window.event;
 			var searchterm=this.getAttribute('searchterm');			
 
@@ -194,9 +195,9 @@ window.OneClickConversations = {
 			e.cancelBubble = true;
 			if (e.stopPropagation) e.stopPropagation();
 			return false;
-		},	
+		}		
 			
-		createClickSpan: function(searchterm) {
+		function createClickSpan(searchterm) {
       var clickSpan = document.createElement("span");
     
       clickSpan.setAttribute("class", "oneclick");  
@@ -205,99 +206,79 @@ window.OneClickConversations = {
       clickSpan.setAttribute('id', "occ_" + parseInt(Math.random() * 10000000, 10));
       clickSpan.textContent = " ";
       return clickSpan;
-		},
+		}
 			
-		addIcons: function() {
+		function addIcons() {
 			/* Calls appropriate functions for adding One Click icon, based on active view */
-			if (DEBUG) { GM_log("<addIcons>"); }
-			var view = this.gmail.getActiveViewType();
-			if (view == 'cv') { //conversation view
-				this.listen(false);
-				this.modConversationView();
-				this.listen(true);
+			var $view=gmail.getActiveViewType();
+			if ($view == 'cv') { //conversation view
+				listen(false);
+				modConversationView();
+				listen(true);
 			}
-			else if (view == 'tl') { //list view
-				this.listen(false);
-				this.modListView();
-				this.listen(true);
+			else if ($view == 'tl') { //list view
+				listen(false);
+				modListView();
+				listen(true);
 			}
-			this.toggleListeners(this.gmail.getActiveViewElement());
-  		if (DEBUG) { GM_log("</addIcons>"); }			
-		},
+			toggleListeners(gmail.getActiveViewElement());
+		}
 			
-		modListView: function() {
-		  if (DEBUG) { GM_log("<modListView>"); }
-			var myEmailAddress=this.getMyEmailAddress();
-			var page = this.gmail.getActiveViewElement();
-			
+		function modListView() {
+			var myEmailAddress=getMyEmailAddress();
+			var page = gmail.getActiveViewElement();
       /* find all message objects, that haven't already been modified */
-			var messages = this.evalXPath("//tr[count(.//span[@class='oneclick'])=0][contains(@class, '" + LIST_TR_CLASS + "')]", page);
+			var messages = evalXPath("//tr[count(.//span[@class='oneclick'])=0][contains(@class, '" + LIST_TR_CLASS + "')]", page);
 			for (i=0; i<messages.length; i++) {	
 				/* Check if we have already modified this message.  This is a paranoia check.  Recursion on this thing gets ugly. */
-				if (!this.isModified(messages[i])) {	
-				  try {
-				   	/* find the first email that isn't ours, corresponding to this message */
-  					var email_address = this.evalXPath(".//span[@class='" + LIST_EMAIL_SPAN_CLASS + "' or " +	"@class='" + LIST_EMAIL_SPAN_BOLD_CLASS + "'][@email!='" + myEmailAddress + "'][1]/@email", messages[i]);
+				if (!isModified(messages[i])) {	
+					/* find the first email that isn't ours, corresponding to this message */
+					var email_address = evalXPath(".//span[@class='" + LIST_EMAIL_SPAN_CLASS + "' or " +	"@class='" + LIST_EMAIL_SPAN_BOLD_CLASS + "'][@email!='" + myEmailAddress + "'][1]/@email", messages[i]);
 
-  					var searchterm="";
-  					try { searchterm=email_address[0].nodeValue; } catch (e) { }
-
-  					if (searchterm == "undefined") 	searchterm=myEmailAddress; //an error occurred, or it was an email to ourselves
-  					else if (searchterm=="") 	searchterm=myEmailAddress;
-
-  					/* Insert the span right before the sender name */		
-  					var icon = this.createClickSpan(searchterm);
-  					messages[i].childNodes[2].firstChild.insertBefore( icon,  messages[i].childNodes[2].firstChild.firstChild );
-  					this.trackIcon(page, icon); 
-				  }
-				  catch(e) {
-				    GM_log(e);
-				  }
-
+					var searchterm="";
+					try { searchterm=email_address[0].nodeValue; } catch (e) { }
+					
+					if (searchterm == "undefined") 	searchterm=myEmailAddress; //an error occurred, or it was an email to ourselves
+					else if (searchterm=="") 	searchterm=myEmailAddress;
+					
+					/* Insert the span right before the sender name */		
+					var icon = createClickSpan(searchterm);
+					messages[i].childNodes[2].firstChild.insertBefore( icon,  messages[i].childNodes[2].firstChild.firstChild );
+					trackIcon(page, icon);
 				}
 			}
-			if (DEBUG) { GM_log("</modListView>"); }
-		},
+		}
 
-		modConversationView: function() {
-		  if (DEBUG) { GM_log("<modConversationView>"); }  	  
-		  var myEmail = this.getMyEmailAddress();
-		  var page = this.gmail.getActiveViewElement();
-			var messages= this.evalXPath(".//span[@email]", page);
+		function modConversationView() {
+		  var myEmail = getMyEmailAddress();
+		  var page = gmail.getActiveViewElement();
+			var messages= evalXPath(".//span[@email]", page);
 			for (i=0;i<messages.length;i++) {	
 				var searchterm=messages[i].getAttribute('email'); // get email from element				
-				if (!this.isModified(messages[i]) && searchterm!=myEmail) {
-				  var icon = this.createClickSpan(searchterm);
+				if (!isModified(messages[i])) {
+				  var icon = createClickSpan(searchterm);
 				  icon.setAttribute('style', 'padding-right:3px');
 					messages[i].insertBefore(icon,messages[i].childNodes[0]);
-					this.trackIcon(page, icon);
+					trackIcon(page, icon);
 				}
 			}
 			
-			//this isn't working quite right
-			messages= this.evalXPath(".//span[@class = '" + CONV_TO_SPAN_CLASS + "'][count(.//span[@class='oneclick'])=0]//span[@class = '" + CONV_IMG_SPAN_CLASS + "']", page);
+			messages= evalXPath(".//span[@class = '" + CONV_TO_SPAN_CLASS + "'][count(.//span[@class='oneclick'])=0]//span[@class = '" + CONV_IMG_SPAN_CLASS + "']", page);
 			for (i=0;i<messages.length;i++) {	
 			  searchterm=messages[i].childNodes[0].getAttribute('jid');
 			  if (searchterm) {
 			    var text = messages[i].parentNode.textContent;
-          var icon = this.createClickSpan(searchterm);
+          var icon = createClickSpan(searchterm);
           icon.setAttribute('style', 'padding-right:3px');
           messages[i].parentNode.insertBefore(icon, messages[i].nextSibling);
-          this.trackIcon(page, icon);
+          trackIcon(page, icon);
 			  }
 		  }
-		  if (DEBUG) { GM_log("</modConversationView>"); }
 		}
-};
-
-window.addEventListener('load', function() {
-  if (unsafeWindow.gmonkey) {
-    unsafeWindow.gmonkey.load('1.0', function(g) {	
-	    OneClickConversations.gmail = g;
-	    OneClickConversations.gmail.registerViewChangeCallback(function()
-    			{
-    				OneClickConversations.addIcons();
-    			});
-      });
+	
+  	gmail.registerViewChangeCallback(addIcons);
+	  listen(true);
+	  addIcons();
+    });
   }
 }, true);

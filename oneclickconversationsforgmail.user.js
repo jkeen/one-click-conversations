@@ -2,10 +2,8 @@
 // @name           One Click Conversations for GMail
 // @namespace      http://www.jeffreykeen.com/projects/oneclickconversations
 // @description    Access recent conversations in one painless click.
-// @include        http://mail.gmail.com/*
-// @include        https://mail.gmail.com/*
-// @include        http://mail.google.com/*
-// @include        https://mail.google.com/*
+// @include       http://mail.google.com/*
+// @include       https://mail.google.com/*
 // ==/UserScript==
 /*
 
@@ -16,19 +14,11 @@
   + Adds icon just to the left of sender name in list view and in message view
     + Clicking on icon takes you to the recent conversations with that user	
   + Option-clicking the icon searches for all messages from the sender's domain.
+  
+### Testing
+  + Works in Firefox 2 & 3 (with greasemonkey), and Safari (with greasekit)
 
 ### Version History:
-   1.0   - 12.29.2006 - Initial Release
-   1.1.0 - 12.30.2006 - One bug fix turned into major restructuring.  
-   1.1.1 - 01.17.2007 - Checks if chat is enabled to prevent icons from showing up without any functionality.
-   1.1.2 - 04.06.2007 - I changed the name from Quicker Contacts to One Click Conversations, a name that better describes what the main use of this script is.  
-   1.1.3 - 04.19.2007 - The script now alerts you if chat isn't enabled, and provides a link to enable it.
-   1.2.0 - 06.20.2007 - Fixed logic after google changed their code.
-                      - Added rollover image to icon as well as tooltip, to make it more obvious that it's clickable.
-   1.2.1 - 07.03.2007 - Fixed slight bug which occurred when clicking "Expand All" in message view.  
-                      - Changed XPath function to allow Opera Support.
-  			              - Fixed bug (due to changed Google code) so clicking on the icon wouldn't pull up messages to and from yourself in the case of multiple replies.
-   1.2.2 - 08.28.2007 - Added more event listeners to ensure that icons get reapplied after an event (deleting a message, for instance).
    2.0	 - 12.14.2007 - Rewrote script to add support for GMail V2, using Google's API. 
    2.1   - 8.14.2008  - Added better cleanup of old event listeners, and reduced use of event listeners dramatically, which improves memory usage
                       - Added support for Greasekit
@@ -64,60 +54,119 @@ const CONV_TO_SPAN_CLASS = 'HcCDpe';
 const CONV_ADDRESS_TABLE = 'BwDhwd';
 const CONV_IMG_ID = 'upi';
 
-const MOZILLA_STYLE =
-"span.oneclick{background: transparent url(" + PERSON_IMAGE + ") top left no-repeat; display:inline-block; text-align:right; padding-right:5px; width:10px; height:10px;}" +
+const FIREFOX_3_STYLE =
+"span.oneclick{background: transparent url(" + PERSON_IMAGE + ") left no-repeat; display:inline-block; text-align:right; padding-right:5px; width:10px; height:10px;}" +
 "span.oneclick:hover{background: transparent url(" + PERSON_IMAGE_OVER + ")  left no-repeat;}";
+
+const FIREFOX_2_STYLE =
+"span.oneclick{background: transparent url(" + PERSON_IMAGE + ") left no-repeat; display:inline-block; text-align:right; padding-right:15px!important; padding-top:1px; width:10px!important; height:10px;}" +
+"span.oneclick:hover{background: transparent url(" + PERSON_IMAGE_OVER + ")  left no-repeat;}" +
+"h3.EP8xU span.oneclick, span.EP8xU span.oneclick {padding-top:1px; padding-right:10px!important;}" +
+"table.BwDhwd tr td.sA2K5 span.oneclick {padding-top:1px; padding-right:10px!important;}";
 
 const SAFARI_STYLE =
 "span.oneclick { background: transparent url(" + PERSON_IMAGE + ") top left no-repeat;}" +
 "span.oneclick:hover { background: transparent url(" + PERSON_IMAGE_OVER + ")  left no-repeat;}" +
 "span.oneclick{ padding-right:5px; display:inline-block; text-align:right; width:10px; height:10px;}" +
 "h3.EP8xU span.oneclick{position:relative; top:0px; }" +
-//title 'from'
+/* title 'from' */
 "span.tQWRdd span.oneclick{position:relative; top:-4px; }" +
-//title 'to'
+/* title 'to' */
 "table.BwDhwd tr td.sA2K5 span.HcCDpe {position:relative; top:-4px; }" +
-//shift information up (shifts icons up too)
+/* shift information up (shifts icons up too) */
 "table.BwDhwd tr td.sA2K5 span.JDpiNd {position:relative; top:3px;}" +
-//shift online icon down
+/* shift online icon down */
 "table.BwDhwd tr td.sA2K5 span.oneclick {position:relative; top:0px;}";
-//shift oneclick icon down
+/* shift oneclick icon down */
+
 const DEBUG = false;
+const LOG_ERRORS = true;
+
+var iconListeners = [];
+var currentPage = null;
+var gmail = null;
+ 
+var BrowserDetect={init:function(){this.browser=this.searchString(this.dataBrowser)||"An unknown browser";this.version=this.searchVersion(navigator.userAgent)||this.searchVersion(navigator.appVersion)||"an unknown version";this.OS=this.searchString(this.dataOS)||"an unknown OS"},searchString:function(data){for(var i=0;i<data.length;i++){var dataString=data[i].string;var dataProp=data[i].prop;this.versionSearchString=data[i].versionSearch||data[i].identity;if(dataString){if(dataString.indexOf(data[i].subString)!=-1)return data[i].identity}else if(dataProp)return data[i].identity}},searchVersion:function(dataString){var index=dataString.indexOf(this.versionSearchString);if(index==-1)return;return parseFloat(dataString.substring(index+this.versionSearchString.length+1))},dataBrowser:[{string:navigator.userAgent,subString:"OmniWeb",versionSearch:"OmniWeb/",identity:"OmniWeb"},{string:navigator.vendor,subString:"Apple",identity:"Safari"},{prop:window.opera,identity:"Opera"},{string:navigator.vendor,subString:"iCab",identity:"iCab"},{string:navigator.vendor,subString:"KDE",identity:"Konqueror"},{string:navigator.userAgent,subString:"Firefox",identity:"Firefox"},{string:navigator.vendor,subString:"Camino",identity:"Camino"},{string:navigator.userAgent,subString:"Netscape",identity:"Netscape"},{string:navigator.userAgent,subString:"MSIE",identity:"Explorer",versionSearch:"MSIE"},{string:navigator.userAgent,subString:"Gecko",identity:"Mozilla",versionSearch:"rv"},{string:navigator.userAgent,subString:"Mozilla",identity:"Netscape",versionSearch:"Mozilla"}],dataOS:[{string:navigator.platform,subString:"Win",identity:"Windows"},{string:navigator.platform,subString:"Mac",identity:"Mac"},{string:navigator.platform,subString:"Linux",identity:"Linux"}]};
+
+BrowserDetect.init();
+  
+// window.addEventListener("load", loader, false);  
 
 if (typeof GM_log === "undefined") {
     function GM_log(log) {
-        if (console)
-        console.log(log);
-        else
-        alert(log);
+        if (console) console.log(log);
+        else alert(log);
     }
 }
 
+//TO DO: change loader into something that polls if not loaded, and tries again to combat incompatibilities with other plugins (remember the milk, namely)
+function loader() {
+  var api = typeof unsafeWindow != "undefined" && unsafeWindow.gmonkey ||
+    (frames.js ? frames.js.gmonkey : null);
+  if (api) api.load("1.0", init);
+}
+
+function debug(msg) {  if (DEBUG) GM_log(msg); }
+function error(msg) {  if (LOG_ERRORS) GM_log("ERROR:" + msg); }
+
 /* Add Styles */
-if (typeof GM_addStyle != "undefined") {
-    GM_addStyle(MOZILLA_STYLE);
-} else if (typeof addStyle != "undefined") {
-    addStyle(css);
-} else {
+
+var browser = [BrowserDetect.browser, BrowserDetect.version, BrowserDetect.os]
+var occStyle;
+
+if ((browser[0] == "Firefox") && (browser[1] == "3")) occStyle=FIREFOX_3_STYLE;
+else if ((browser[0] == "Firefox") && (browser[1] == "2")) occStyle=FIREFOX_2_STYLE;
+else if (browser[0] == "Safari") occStyle=SAFARI_STYLE;
+else occStyle=FIREFOX_3_STYLE;
+
+if (typeof GM_addStyle != "undefined") { GM_addStyle(occStyle); } 
+else if (typeof addStyle != "undefined") { addStyle(occStyle); } 
+else {
     var heads = document.getElementsByTagName("head");
     if (heads.length > 0) {
         var node = document.createElement("style");
         node.type = "text/css";
-        node.appendChild(document.createTextNode(SAFARI_STYLE));
+        node.appendChild(document.createTextNode(occStyle));
         heads[0].appendChild(node);
     }
 }
 
-var iconListeners = [];
-var currentPage;
-
-window.addEventListener('load',
-function() {
-    var win = typeof unsafeWindow != "undefined" ? unsafeWindow: frames.js;
+window.addEventListener('load', function() {
+    var win = (typeof unsafeWindow != "undefined" ? unsafeWindow : frames.js);
     if (win.gmonkey) {
-        win.gmonkey.load('1.0',
-        function(gmail) {
+        debug("gmonkey available");   
+        win.gmonkey.load('1.0', function(g) {
+            gmail = g;
+            debug("gmonkey loaded");          
+
+            function getViewElement() {
+              try {
+                 return gmail.getActiveViewElement();
+               }
+               catch(e) {
+                 error("gmail.getActiveViewType() returned an error: " + e);
+               }
+            }
+            
+            function debugIconListeners() {
+              debug("icon listeners: " + iconListeners);
+            }
+
+            function getViewType() {
+              try {
+                return gmail.getActiveViewType();
+              }
+              catch(e) {
+                error("gmail.getActiveViewType() returned an error: " + e);
+              }
+            }
+            
+            function alertViewChange() {
+              module.setContent(gmail.getActiveViewType());
+            }
+              
             function evalXPath(expression, rootNode) {
+                debug("<evalXPath expression = " + expression + " rootNode=" + rootNode + ">");
                 try {
                     var xpathIterator = rootNode.ownerDocument.evaluate(
                     expression,
@@ -127,8 +176,8 @@ function() {
                     XPathResult.ORDERED_NODE_ITERATOR_TYPE,
                     null);
                     // no existing results
-                } catch(err) {
-                    GM_log("Error when evaluating XPath expression '" + expression + "'" + ": " + err);
+                } catch(e) {
+                    error("evalXPath errored: '" + expression + "'" + ": " + e);
                     return null;
                 }
                 var results = [];
@@ -138,67 +187,107 @@ function() {
                     results.push(xpathNode);
                 }
 
+                debug("</evalXPath>");
                 return results;
             }
 
             function listen(bool) {
-                var root = gmail.getActiveViewElement();
-                if (bool) root.addEventListener("DOMNodeInserted", addIcons);
-                else root.removeEventListener("DOMNodeInserted", addIcons);
+                debug("<listen bool = " + bool + ">");
+                var root = getViewElement();
+                if (bool) root.addEventListener("DOMNodeInserted", addIcons, false);
+                else root.removeEventListener("DOMNodeInserted", addIcons, false);
+                debug("</listen>");
             }
 
             function toggleListeners(page) {
-                var view_id = page.getAttribute('view_id');
-                if (currentPage) turnOffListeners(iconListeners[view_id]);
-                currentPage = gmail.getActiveViewElement();
-
-                turnOnListeners(iconListeners[view_id]);
-                removeOrphans();
+               debug("<toggleListeners page = " + page + ">");
+               try {
+                if (page) {
+                  var view_id = page.getAttribute('view_id');
+                  if (currentPage) turnOffListeners(iconListeners[view_id]);
+                  currentPage = getViewElement();
+                  turnOnListeners(iconListeners[view_id]);
+                  removeOrphans();
+                }
+                else {
+                  debug("page was null");
+                }
+        
+              }
+              catch(e) {
+                error("toggleListeners errored: " + e);
+              }
+              debug("</toggleListeners>");                
             }
 
             function turnOffListeners(array) {
-                if (!array) return;
-
+              debug("<turnOffListeners>");              
+              try {
                 for (var i = 0; i < array.length; i++) {
-                    array[i].removeEventListener('mousedown', jumpToConversation);
+                    array[i].removeEventListener('mousedown', jumpToConversation, true);
                 }
+              }
+              catch(e) {
+                error("turnOffListeners errored: " + e);
+              }
+              debug("</turnOffListeners>");
             }
 
             function turnOnListeners(array) {
-                if (!array) return;
-
-                for (var i = 0; i < array.length; i++) {
-                    array[i].addEventListener('mousedown', jumpToConversation);
+                debug("<turnOnListeners>");
+                try {
+                  for (var i = 0; i < array.length; i++) {
+                      array[i].addEventListener('mousedown', jumpToConversation, true);
+                  }
                 }
+                catch(e) {
+                  error("turnOnListeners errored: " + e);
+                }
+                debug("</turnOnListeners>");  
             }
 
             function removeIconListener(element) {
-                element.removeEventListener('mousedown', jumpToConversation);
+                element.removeEventListener('mousedown', jumpToConversation, true);
             }
 
             function removeOrphans() {
-                for (var id in iconListeners) {
-                    //if ((document.getElementById('canvas_frame')) && (!document.getElementById('canvas_frame').contentDocument.getElementById(id))) {
-                    var query = evalXPath("//div[@vid='" + id + "']", document.getElementById('canvas_frame'));
-                    if (!query) {
-                        turnOffListeners(iconListeners[id]);
-                        delete iconListeners[id];
+                debug("<removeOrphans>");
+                 try {
+                    for (var id in iconListeners) {
+                        var query = evalXPath("//div[@vid='" + id + "']", gmail.getCanvasElement());
+                        if (!query) {
+                            error("can't find vid=" + id);
+                            turnOffListeners(iconListeners[id]);
+                            delete iconListeners[id];
+                        }
                     }
                 }
+                catch(e) {
+                    error("removeOrphans errored: " + e);
+                }
+                debug("</removeOrphans>");
             }
 
             function trackIcon(page, element) {
-                /* keep track of icons per page, so we can add/remove listeners effectively */
-                var listeners = [];
-                if (key = page.getAttribute('view_id')) {
-                    listeners = iconListeners[key];
+                debug("<trackIcon page = " + page + " element = " + element + ">");
+                try {
+                    /* keep track of icons per page, so we can add/remove listeners effectively */
+                    var listeners = [];
+                    if (key = page.getAttribute('view_id')) {
+                        listeners = (iconListeners[key] || []);
+                    }
+                    else {
+                        key = "vid_" + parseInt(Math.random() * 10000000, 10);
+                        page.setAttribute('view_id', key);
+                    }
+                    listeners.push(element);
+                    iconListeners[key] = listeners;
+                    debug("iconListeners[" + key + "] = " + listeners);
                 }
-                else {
-                    key = "vid_" + parseInt(Math.random() * 10000000, 10);
-                    page.setAttribute('view_id', key);
+                catch(e) {
+                    error("trackIcon errored: " + e);
                 }
-                listeners.push(element);
-                iconListeners[key] = listeners;
+                debug("</trackIcon>");
             }
 
             function isModified(message) {
@@ -206,34 +295,50 @@ function() {
             }
 
             function getMyEmailAddress() {
-                /* get our address, so we don't create link to ourself in the case of conversations */
+                debug("<getMyEmailAddress>");
                 try {
-                    var masthead = gmail.getMastheadElement();
-                    var results = evalXPath(".//div[@class='" + MASTHEAD_EMAIL_DIV_CLASS + "']//b", masthead);
-                    var myAddress = results[0].innerHTML;
+                  /* get our address, so we don't create link to ourself in the case of conversations */
+                  try {
+                      var masthead = gmail.getMastheadElement();
+                      var results = evalXPath(".//div[@class='" + MASTHEAD_EMAIL_DIV_CLASS + "']//b", masthead);
+                      var myAddress = results[0].innerHTML;
+                  }
+                  catch(e) {
+                    error("getMyEmailAddress errored: " + e);
+                  }
+                  return myAddress;              
                 }
-                catch(e) {}
-                return myAddress;
+                catch(e) {
+                  error("getMyEmailAddress errored: " + e);
+                }
+                debug("</getMyEmailAddress>");   
             }
 
             function jumpToConversation(e) {
-                if (!e) var e = window.event;
-                var searchterm = this.getAttribute('searchterm');
+                debug("<jumpToConversation>");
+                try {
+                  if (!e) var e = window.event;
+                  var searchterm = this.getAttribute('searchterm');
+                  debug("found search term = " + searchterm);
+                  if (e.altKey) {
+                      /* if alt/option key is down, search based on domain. */
+                      var terms = searchterm.split('@');
+                      if (terms.length > 1) {
+                          searchterm = "*@" + terms[1];
+                      }
+                  }
+                  top.location.hash = "#search/" + "from%3A" + encodeURIComponent(searchterm) + "+OR+to%3A" + encodeURIComponent(searchterm);
 
-                if (e.altKey) {
-                    /* if alt/option key is down, search based on domain. */
-                    var terms = searchterm.split('@');
-                    if (terms.length > 1) {
-                        searchterm = "*@" + terms[1];
-                    }
+                  /* Cancel the other events after this one.  This prevents gmail from loading a message from our click event. */
+                  e.preventDefault();
+                  e.cancelBubble = true;
+                  if (e.stopPropagation) e.stopPropagation();
+                  return false;
                 }
-                top.location.hash = "#search/" + "from%3A" + encodeURIComponent(searchterm) + "+OR+to%3A" + encodeURIComponent(searchterm);
-
-                /* Cancel the other events after this one.  This prevents gmail from loading a message from our click event. */
-                e.preventDefault();
-                e.cancelBubble = true;
-                if (e.stopPropagation) e.stopPropagation();
-                return false;
+                catch(e) {
+                  error("jumpToConversation errored: " + e);
+                }
+                debug("</jumpToConversation>");
             }
 
             function createClickSpan(searchterm) {
@@ -248,31 +353,36 @@ function() {
             }
 
             function addIcons() {
+                debug("<addIcons>");
                 try {
                     /* Calls appropriate functions for adding One Click icon, based on active view */
-                    var view = gmail.getActiveViewType();
-                    if (view == 'cv') {
+                    
+                    var type = getViewType();
+                    var view = getViewElement();
+                    if (type == 'cv') {
                         //conversation view
                         listen(false);
                         modConversationView();
                         listen(true);
                     }
-                    else if (view == 'tl') {
+                    else if (type == 'tl') {
                         //list view
                         listen(false);
                         modListView();
                         listen(true);
                     }
-                    toggleListeners(gmail.getActiveViewElement());
+                    toggleListeners(view);
                 }
-                catch(e) {
-                    GM_log(e);
+                catch(e) {   
+                    error("addIcons errored: " + e);
                 }
+                debug("</addIcons>");
             }
 
             function modListView() {
+                debug("<modListView>");                
                 var myEmailAddress = getMyEmailAddress();
-                var page = gmail.getActiveViewElement();
+                var page = getViewElement();
                 /* find all message objects, that haven't already been modified */
                 var messages = evalXPath("//tr[count(.//span[@class='oneclick'])=0][contains(@class, '" + LIST_TR_CLASS + "')]", page);
                 for (i = 0; i < messages.length; i++) {
@@ -296,11 +406,14 @@ function() {
                         trackIcon(page, icon);
                     }
                 }
+                debug("</modListView>");
             }
 
             function modConversationView() {
+                debug("<modConversationView>");
+              
                 var myEmail = getMyEmailAddress();
-                var page = gmail.getActiveViewElement();
+                var page = getViewElement();
 
                 var messages = evalXPath(".//span[@email]", page);
                 for (i = 0; i < messages.length; i++) {
@@ -325,11 +438,16 @@ function() {
                         trackIcon(page, icon);
                     }
                 }
+                debug("</modConversationView>");
             }
-
-            gmail.registerViewChangeCallback(addIcons);
-            listen(true);
+            
+            gmail = g;
+            g.registerViewChangeCallback(addIcons);
             addIcons();
+            // var debugicons = window.setInterval(debugIconListeners, 1000);
         });
     }
-});
+    else {
+      debug ("gmonkey was not loaded."); 
+    }
+}, true);

@@ -80,7 +80,7 @@ const SAFARI_STYLE =
 "table.BwDhwd tr td.sA2K5 span.oneclick {position:relative; top:0px;}";
 /* shift oneclick icon down */
 
-const DEBUG = false;
+const DEBUG = true;
 const LOG_ERRORS = true;
 
 var iconListeners = [];
@@ -406,24 +406,26 @@ function modConversationView() {
         }
     }
     debug("</modConversationView>");
-  }
+}
 
 var loadPoller;
 function loader() {
     clearTimeout(loadPoller); 
     var api = typeof unsafeWindow != "undefined" && unsafeWindow.gmonkey || (frames.js ? frames.js.gmonkey : null);
     if (api) {
-      if (!api.isLoaded()) {
-        api.load("1.0", function(g) {
-          gmail = g;
-          g.registerViewChangeCallback(addIcons);
-          addIcons();
-        });
-      }
+      debug("got gmonkey handle");
+      api.load("1.0", function(g) {
+        debug("api is loaded");
+        gmail = g;
+        g.registerViewChangeCallback(addIcons);
+        addIcons();
+      });
     }
     else {
+      // Sometimes some shit goes down, and we need to prepare for it
       debug("OCC didn't load, will try again");
-      if (!loadPoller) loadPoller = window.setTimeout(loader, 1000);
+      if (!loadPoller) loadPoller = window.setTimeout(loader, 500);
     }
 }
-window.addEventListener("load", loader, false);  
+document.addEventListener("load", function() { window.setTimeout(loader, 500); loader(); }, true);
+window.addEventListener("load", function() { window.setTimeout(loader, 500); loader(); }, true);

@@ -1,0 +1,31 @@
+span.oneclick { 
+   background-image: url(data:image/gif;base64,R0lGODlhCgAKAIABANXV1QAAACH5BAEAAAEALAAAAAAKAAoAAAITjIFgq7zRzotw2kurk09nn4RBAQA7);
+   background-position: center bottom;
+   background-repeat: no-repeat;
+   padding:2px;
+   margin-right:3px;
+   display:inline-block; 
+   text-align:right; 
+   overflow:visible;
+   width:8px;
+   height:8px;
+   position:relative;
+}
+
+span.oneclick:active { 
+  background-image: url(data:image/gif;base64,R0lGODlhCgAKALMAADMzM//M/9LS0mZmZrm5ue7u7v///+rq6t3d3QAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEHAAEALAAAAAAKAAoAAAQpMMhBh7xDGCMsPtvhTaAhXkF2HB2aEsQ4ITQyDkWNFB5e/D8PYEgcBiIAOw==); 
+}
+td.gL span.gI { position:relative; top:-3px!important; }
+td.gL span.gI span.ik {
+  top:3px!important;
+}
+td.gL span.gI span.ik span.oneclick {
+  top:-3px!important;
+}
+span.ik > span.oneclick { 
+  position:relative; top:-3px; 
+} 
+
+div.mF span + span.oneclick {
+  display:none; /* Buzz posts */
+}
